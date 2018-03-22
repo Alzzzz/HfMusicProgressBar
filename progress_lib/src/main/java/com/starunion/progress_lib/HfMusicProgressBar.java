@@ -10,8 +10,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
 import android.support.annotation.Nullable;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -19,13 +17,14 @@ import android.view.MotionEvent;
 import android.view.View;
 
 /**
- * Discription:
+ * Discription:音乐进度条
+ *
  * Created by sz on 2018/3/21.
  */
 
 public class HfMusicProgressBar extends View {
     private static final String TAG = HfMusicProgressBar.class.getSimpleName();
-    private boolean isDebug = true;
+    private boolean isDebug = false;
     private Paint mPathPaint;
     private Bitmap mBackgroundBitmap;
     private int mProgressBarColor;
@@ -35,12 +34,18 @@ public class HfMusicProgressBar extends View {
     private int mInitialMotionY;
     private float mInitialMotionX;
     private float mLastDistance;
-    private float diffX;
+    private volatile float diffX;
     private Path mPath;
     /**
      * 100分之多少
      */
     private float mProgress;
+    /**每个最大宽度对应的单位长度*/
+    private long unitLength;
+    /**最大能达到的长度*/
+    private long maxLength;
+    /**总宽度*/
+    private float totalWidth;
 
     OnProgressBarScrollListener mOnProgressBarScrollListener;
 
@@ -85,6 +90,35 @@ public class HfMusicProgressBar extends View {
     }
 
     /**
+     * 设置listener
+     *
+     * @param onProgressBarScrollListener
+     */
+    public void setOnProgressBarScrollListener(OnProgressBarScrollListener onProgressBarScrollListener){
+        this.mOnProgressBarScrollListener = onProgressBarScrollListener;
+    }
+
+    /**
+     * 单位长度
+     *
+     * @param unitLength
+     */
+    public void setUnitLength(long unitLength){
+        this.unitLength = unitLength;
+    }
+
+    /**
+     * 最大长度
+     * 例如 当前屏幕显示的进度走到100%是20秒，总共时长为6分钟
+     * 则setUnitLength传入20，setMaxLength传入360
+     *
+     * @param maxLength
+     */
+    public void setMaxLength(long maxLength){
+        this.maxLength = maxLength;
+    }
+
+    /**
      * 初始化
      * @param attrs
      */
@@ -93,8 +127,6 @@ public class HfMusicProgressBar extends View {
         backgroundRes = a.getResourceId(R.styleable.HfMusicProgressBar_progress_background, 0);
         mProgressBarColor = a.getColor(R.styleable.HfMusicProgressBar_progress_color, Color.BLUE);
         a.recycle();
-
-//        mBackgroundBitmap = getBitmapFromDrawable(getBackground());
 
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 
@@ -112,18 +144,29 @@ public class HfMusicProgressBar extends View {
         paint.setAntiAlias(true);
 
         int bgWidth = mBackgroundBitmap.getWidth();
-        // TODO: 2018/3/21 添加左右的滑动距离限制
         //找到这次拖拽的距离和上次拖拽距离的和
         mLastDistance = mLastDistance + diffX;
-        float resultWidht = mLastDistance;
+        diffX = 0;
+        //禁止在最顶时向右滑动
+        if (mLastDistance > 0){
+            mLastDistance = 0;
+        }
+        //禁止在最底时向左滑动
+        if (mLastDistance < mWidth-totalWidth){
+            mLastDistance = mWidth-totalWidth;
+        }
+        float resultWidth = mLastDistance;
         if (isDebug){
-            Log.d(TAG, "onDraw: resultWidht="+ resultWidht);
+            Log.d(TAG, "onDraw: resultWidht="+ resultWidth);
         }
 
         int i = 0;
-        while(resultWidht < mWidth && bgWidth > 0){
-            canvas.drawBitmap(mBackgroundBitmap, resultWidht,0,paint);
-            resultWidht += bgWidth;
+        while(resultWidth < mWidth && bgWidth > 0){
+            //节省不必要的绘制
+            if (resultWidth+ bgWidth >0){
+                canvas.drawBitmap(mBackgroundBitmap, resultWidth,0,paint);
+            }
+            resultWidth += bgWidth;
             i++;
         }
         if (isDebug){
@@ -148,12 +191,21 @@ public class HfMusicProgressBar extends View {
         switch (event.getAction()){
             case MotionEvent.ACTION_DOWN:
                 mInitialMotionX = event.getX();
+                if (mOnProgressBarScrollListener != null){
+                    mOnProgressBarScrollListener.onScrollStart();
+                }
                 break;
             case MotionEvent.ACTION_MOVE:
                 diffX = event.getX() - mInitialMotionX;
                 mInitialMotionX = event.getX();
                 Log.d(TAG, "ACTION_MOVE mInitialMotionX="+mInitialMotionX+",diffX="+diffX);
                 invalidate();
+                break;
+
+            case MotionEvent.ACTION_UP:
+                if (mOnProgressBarScrollListener != null){
+                    mOnProgressBarScrollListener.onScrollEnd(getCurLength());
+                }
                 break;
             default:
                 break;
@@ -169,28 +221,13 @@ public class HfMusicProgressBar extends View {
 
         mWidth = MeasureSpec.getSize(widthMeasureSpec);
         mHeight = MeasureSpec.getSize(heightMeasureSpec);
-    }
 
-    private Bitmap getBitmapFromDrawable(Drawable drawable) {
-
-        if (drawable == null) {
-            return null;
-        }
-
-        if (drawable instanceof BitmapDrawable) {
-            return ((BitmapDrawable) drawable).getBitmap();
-        }
-
-        try {
-            Bitmap bitmap;
-            bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(bitmap);
-            drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
-            drawable.draw(canvas);
-            return bitmap;
-        } catch (OutOfMemoryError e) {
-            return null;
+        if (maxLength > 0 && unitLength > 0){
+            totalWidth = mWidth * maxLength*1.0f/unitLength;
         }
     }
 
+    public long getCurLength() {
+        return (long) Math.abs(maxLength * mLastDistance * 1.0f/totalWidth);
+    }
 }
