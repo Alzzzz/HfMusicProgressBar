@@ -10,15 +10,17 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.support.annotation.Nullable;
+import android.support.v4.content.ContextCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
 /**
- * Discription:音乐进度条
- *
+ * Discription:
  * Created by sz on 2018/3/21.
  */
 
@@ -128,6 +130,10 @@ public class HfMusicProgressBar extends View {
         mProgressBarColor = a.getColor(R.styleable.HfMusicProgressBar_progress_color, Color.BLUE);
         a.recycle();
 
+        if (backgroundRes != 0){
+            mBackgroundBitmap = getBitmapFromDrawable(ContextCompat.getDrawable(getContext(), backgroundRes));
+        }
+
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 
         mPath = new Path();
@@ -152,7 +158,7 @@ public class HfMusicProgressBar extends View {
             mLastDistance = 0;
         }
         //禁止在最底时向左滑动
-        if (mLastDistance < mWidth-totalWidth){
+        if (mLastDistance < mWidth-totalWidth && totalWidth > totalWidth){
             mLastDistance = mWidth-totalWidth;
         }
         float resultWidth = mLastDistance;
@@ -224,6 +230,28 @@ public class HfMusicProgressBar extends View {
 
         if (maxLength > 0 && unitLength > 0){
             totalWidth = mWidth * maxLength*1.0f/unitLength;
+        }
+    }
+
+    private Bitmap getBitmapFromDrawable(Drawable drawable) {
+
+        if (drawable == null) {
+            return null;
+        }
+
+        if (drawable instanceof BitmapDrawable) {
+            return ((BitmapDrawable) drawable).getBitmap();
+        }
+
+        try {
+            Bitmap bitmap;
+            bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+            drawable.draw(canvas);
+            return bitmap;
+        } catch (OutOfMemoryError e) {
+            return null;
         }
     }
 
